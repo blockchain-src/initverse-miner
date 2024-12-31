@@ -101,17 +101,33 @@ function update_env_file() {
 # 生成 EVM 钱包地址并保存到 .env 文件
 function generate_wallet_address() {
     local PRIVATE_KEY=$1
-    if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -ne 64 ]]; then
+
+    # 检查私钥格式是否有效
+    if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -ne 64 || ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
         log "无效的私钥输入，请检查。"
-        exit 1
+        echo "私钥无效，请确保输入的是64位十六进制字符串。"
+        return 1
     fi
 
+    # 核对公钥和钱包地址
+    log "核对你的钱包地址..."
     PUBLIC_KEY=$(echo -n "$PRIVATE_KEY" | xxd -r -p | openssl ec -pubout -conv_form uncompressed 2>/dev/null | tail -n +2 | tr -d '\n')
+    if [[ -z "$PUBLIC_KEY" ]]; then
+        log "请检查私钥输入。"
+        return 1
+    fi
+
     ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "import sys, sha3; k=sha3.keccak_256(); k.update(sys.stdin.buffer.read()); print('0x' + k.hexdigest()[24:])")
 
-    update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
-    update_env_file "WALLET_ADDRESS" "$ADDRESS"
-    echo "$ADDRESS"
+    if [[ -n "$ADDRESS" ]]; then
+        update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
+        update_env_file "WALLET_ADDRESS" "$ADDRESS"
+        log "你的钱包地址为: $ADDRESS"
+        echo "$ADDRESS"
+    else
+        log "钱包地址生成失败。"
+        return 1
+    fi
 }
 
 # 下载矿机
@@ -174,8 +190,8 @@ function download_and_run_miner() {
     echo "请输入私钥："
     read PRIVATE_KEY
 
-    WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY")
-    log "生成的钱包地址为: $WALLET_ADDRESS"
+    WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY") || { echo "钱包地址生成失败，请重新运行脚本。"; return; }
+    log "你的钱包地址为: $WALLET_ADDRESS"
 
     echo "请输入工作名称："
     read WORKER_NAME
