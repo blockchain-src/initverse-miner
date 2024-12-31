@@ -34,6 +34,33 @@ function install_package() {
     fi
 }
 
+# 安装 pm2（如果未安装）
+function install_pm2() {
+    log "检查 Node.js 和 pm2 是否已安装..."
+
+    # 检查 Node.js
+    if ! command -v node &>/dev/null; then
+        log "Node.js 未安装，正在安装 Node.js..."
+        install_package nodejs
+    else
+        log "Node.js 已安装，版本: $(node -v)"
+    fi
+
+    # 检查 npm
+    if ! command -v npm &>/dev/null; then
+        log "npm 未安装，正在安装 npm..."
+        install_package npm
+    fi
+
+    # 检查 pm2
+    if ! command -v pm2 &>/dev/null; then
+        log "pm2 未安装，正在安装 pm2..."
+        sudo npm install -g pm2 || log "pm2 安装失败，跳过。"
+    else
+        log "pm2 已安装，继续运行..."
+    fi
+}
+
 # 检查并安装依赖
 function install_dependencies() {
     log "检查并安装依赖..."
