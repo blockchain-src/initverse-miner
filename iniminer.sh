@@ -109,11 +109,12 @@ function generate_wallet_address() {
         return 1
     fi
 
-    # 核对公钥和钱包地址
-    log "核对你的钱包地址..."
+    # 生成公钥和钱包地址
+    log "开始生成钱包地址..."
     PUBLIC_KEY=$(echo -n "$PRIVATE_KEY" | xxd -r -p | openssl ec -pubout -conv_form uncompressed 2>/dev/null | tail -n +2 | tr -d '\n')
     if [[ -z "$PUBLIC_KEY" ]]; then
-        log "请检查私钥输入。"
+        log "公钥生成失败，请检查私钥输入。"
+        echo "公钥生成失败，请检查私钥是否正确。"
         return 1
     fi
 
@@ -122,10 +123,12 @@ function generate_wallet_address() {
     if [[ -n "$ADDRESS" ]]; then
         update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
         update_env_file "WALLET_ADDRESS" "$ADDRESS"
-        log "你的钱包地址为: $ADDRESS"
+        log "钱包地址生成成功: $ADDRESS"
         echo "$ADDRESS"
+        return 0
     else
         log "钱包地址生成失败。"
+        echo "钱包地址生成失败，请检查输入的私钥。"
         return 1
     fi
 }
@@ -187,11 +190,18 @@ function main_menu() {
 function download_and_run_miner() {
     download_miner
 
-    echo "请输入私钥："
-    read PRIVATE_KEY
+    while true; do
+        echo "请输入私钥："
+        read PRIVATE_KEY
 
-    WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY") || { echo "钱包地址生成失败，请重新运行脚本。"; return; }
-    log "你的钱包地址为: $WALLET_ADDRESS"
+        WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY")
+        if [[ $? -eq 0 ]]; then
+            log "生成的钱包地址为: $WALLET_ADDRESS"
+            break
+        else
+            echo "钱包地址生成失败，请重新输入私钥。"
+        fi
+    done
 
     echo "请输入工作名称："
     read WORKER_NAME
