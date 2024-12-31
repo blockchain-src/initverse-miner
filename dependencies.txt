@@ -1,0 +1,11 @@
+wget
+openssl
+xxd
+xclip
+nodejs
+npm
+pm2
+python3-pip
+requests
+pysha3
+keccak-256sum
