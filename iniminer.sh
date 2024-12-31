@@ -73,24 +73,10 @@ function install_dependencies() {
         fi
     done
 
-    # 检查并强制安装 Python 模块
-    log "检查 Python 模块 pysha3 和 requests 是否可用..."
-    pip3 install --force-reinstall pysha3 requests || {
-        log "强制安装 pysha3 或 requests 模块失败，请检查 pip 环境。"; exit 1;
-    }
-
-    if ! python3 -c "import sha3" &>/dev/null; then
-        log "Python 模块 sha3 测试失败，请检查 pysha3 安装情况。"
-        exit 1
-    else
-        log "Python 模块 sha3 已成功安装并可用。"
-    fi
-
+    # 检查 Python 模块
     if ! python3 -c "import requests" &>/dev/null; then
-        log "Python 模块 requests 测试失败，请检查 requests 安装情况。"
-        exit 1
-    else
-        log "Python 模块 requests 已成功安装并可用。"
+        log "Python requests 模块未安装，尝试安装..."
+        pip3 install requests || log "requests 模块安装失败，跳过。"
     fi
 
     log "依赖检查和安装已完成。"
@@ -135,9 +121,13 @@ function generate_wallet_address() {
         return 1
     fi
 
-    # 生成钱包地址
-    log "开始生成钱包地址..."
-    ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "import sys, sha3; k=sha3.keccak_256(); k.update(sys.stdin.buffer.read()); print('0x' + k.hexdigest()[24:])")
+    # 生成钱包地址（使用 hashlib 替代 pysha3）
+    ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "
+import sys, hashlib
+k = hashlib.sha3_256()
+k.update(sys.stdin.buffer.read())
+print('0x' + k.hexdigest()[24:])
+")
     if [[ -n "$ADDRESS" ]]; then
         update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
         update_env_file "WALLET_ADDRESS" "$ADDRESS"
@@ -208,18 +198,11 @@ function main_menu() {
 function download_and_run_miner() {
     download_miner
 
-    while true; do
-        echo "请输入私钥："
-        read PRIVATE_KEY
+    echo "请输入私钥："
+    read PRIVATE_KEY
 
-        WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY")
-        if [[ $? -eq 0 ]]; then
-            log "生成的钱包地址为: $WALLET_ADDRESS"
-            break
-        else
-            echo "钱包地址生成失败，请重新输入私钥。"
-        fi
-    done
+    WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY") || { echo "钱包地址生成失败，请重新输入私钥。"; read -n 1 -s -r -p "按任意键返回主菜单..."; main_menu; return; }
+    log "生成的钱包地址为: $WALLET_ADDRESS"
 
     echo "请输入工作名称："
     read WORKER_NAME
@@ -280,8 +263,4 @@ function restart_miner() {
         log "没有运行的矿机进程。请先启动矿机。"
     fi
     read -n 1 -s -r -p "按任意键返回主菜单..."
-    main_menu
-}
-
-# 运行主菜单
-main_menu
+   
