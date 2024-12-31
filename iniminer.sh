@@ -73,10 +73,24 @@ function install_dependencies() {
         fi
     done
 
-    # 检查 Python 模块
+    # 检查并强制安装 Python 模块
+    log "检查 Python 模块 pysha3 和 requests 是否可用..."
+    pip3 install --force-reinstall pysha3 requests || {
+        log "强制安装 pysha3 或 requests 模块失败，请检查 pip 环境。"; exit 1;
+    }
+
+    if ! python3 -c "import sha3" &>/dev/null; then
+        log "Python 模块 sha3 测试失败，请检查 pysha3 安装情况。"
+        exit 1
+    else
+        log "Python 模块 sha3 已成功安装并可用。"
+    fi
+
     if ! python3 -c "import requests" &>/dev/null; then
-        log "Python requests 模块未安装，尝试安装..."
-        pip3 install requests || log "requests 模块安装失败，跳过。"
+        log "Python 模块 requests 测试失败，请检查 requests 安装情况。"
+        exit 1
+    else
+        log "Python 模块 requests 已成功安装并可用。"
     fi
 
     log "依赖检查和安装已完成。"
@@ -102,6 +116,9 @@ function update_env_file() {
 function generate_wallet_address() {
     local PRIVATE_KEY=$1
 
+    # 清理私钥，去除多余空格或换行
+    PRIVATE_KEY=$(echo -n "$PRIVATE_KEY" | tr -d '[:space:]')
+
     # 检查私钥格式是否有效
     if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -ne 64 || ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
         log "无效的私钥输入，请检查。"
@@ -109,17 +126,18 @@ function generate_wallet_address() {
         return 1
     fi
 
-    # 生成公钥和钱包地址
-    log "开始生成钱包地址..."
+    # 生成公钥
+    log "开始生成公钥..."
     PUBLIC_KEY=$(echo -n "$PRIVATE_KEY" | xxd -r -p | openssl ec -pubout -conv_form uncompressed 2>/dev/null | tail -n +2 | tr -d '\n')
     if [[ -z "$PUBLIC_KEY" ]]; then
-        log "公钥生成失败，请检查私钥输入。"
-        echo "公钥生成失败，请检查私钥是否正确。"
+        log "公钥生成失败，请检查私钥输入是否正确。"
+        echo "公钥生成失败，请确认 openssl 是否正常工作。"
         return 1
     fi
 
+    # 生成钱包地址
+    log "开始生成钱包地址..."
     ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "import sys, sha3; k=sha3.keccak_256(); k.update(sys.stdin.buffer.read()); print('0x' + k.hexdigest()[24:])")
-
     if [[ -n "$ADDRESS" ]]; then
         update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
         update_env_file "WALLET_ADDRESS" "$ADDRESS"
