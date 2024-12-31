@@ -27,12 +27,11 @@ function log() {
 function install_package() {
     PACKAGE=$1
     if [ -f /etc/debian_version ]; then
-        sudo apt update && sudo apt install -y $PACKAGE
+        sudo apt update && sudo apt install -y $PACKAGE || log "安装 $PACKAGE 失败，跳过。"
     elif [ -f /etc/redhat-release ]; then
-        sudo yum install -y $PACKAGE
+        sudo yum install -y $PACKAGE || log "安装 $PACKAGE 失败，跳过。"
     else
-        log "不支持的操作系统，无法自动安装 $PACKAGE。请手动安装。"
-        exit 1
+        log "不支持的操作系统，无法自动安装 $PACKAGE。"
     fi
 }
 
@@ -57,7 +56,7 @@ function install_pm2() {
     # 检查 pm2
     if ! command -v pm2 &>/dev/null; then
         log "pm2 未安装，正在安装 pm2..."
-        sudo npm install -g pm2
+        sudo npm install -g pm2 || log "pm2 安装失败，跳过。"
     else
         log "pm2 已安装，继续运行..."
     fi
@@ -67,38 +66,20 @@ function install_pm2() {
 function install_dependencies() {
     log "检查并安装依赖..."
     DEPENDENCIES=(wget openssl xxd xclip python3-pip)
-    MISSING=()
     for dep in "${DEPENDENCIES[@]}"; do
         if ! command -v $dep &>/dev/null; then
-            MISSING+=("$dep")
+            log "$dep 未安装，正在安装..."
+            install_package $dep
         fi
     done
-
-    if [ ${#MISSING[@]} -gt 0 ]; then
-        log "以下依赖未安装: ${MISSING[*]}"
-        if [ -f /etc/debian_version ]; then
-            sudo apt update && sudo apt install -y "${MISSING[@]}"
-        elif [ -f /etc/redhat-release ]; then
-            sudo yum install -y "${MISSING[@]}"
-        else
-            log "不支持的操作系统，无法安装依赖: ${MISSING[*]}"
-            exit 1
-        fi
-    fi
 
     # 检查 Python 模块
     if ! python3 -c "import requests" &>/dev/null; then
         log "Python requests 模块未安装，尝试安装..."
-        pip3 install requests || { log "requests 安装失败"; exit 1; }
+        pip3 install requests || log "requests 模块安装失败，跳过。"
     fi
 
-    if ! command -v keccak-256sum &>/dev/null; then
-        log "keccak-256sum 未找到，尝试安装 pysha3..."
-        pip3 install pysha3 || { log "pysha3 安装失败"; exit 1; }
-    fi
-
-    install_pm2
-    log "所有依赖已安装。"
+    log "依赖检查和安装已完成。"
 }
 
 # 配置环境变量
@@ -126,7 +107,7 @@ function generate_wallet_address() {
     fi
 
     PUBLIC_KEY=$(echo -n "$PRIVATE_KEY" | xxd -r -p | openssl ec -pubout -conv_form uncompressed 2>/dev/null | tail -n +2 | tr -d '\n')
-    ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | keccak-256sum -x -l | awk '{print "0x"substr($1, 25)}')
+    ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "import sys, sha3; k=sha3.keccak_256(); k.update(sys.stdin.buffer.read()); print('0x' + k.hexdigest()[24:])")
 
     update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
     update_env_file "WALLET_ADDRESS" "$ADDRESS"
