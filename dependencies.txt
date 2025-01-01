@@ -1,9 +1,6 @@
 wget
 openssl
 xxd
-xclip
 nodejs
 npm
 pm2
-requests
-

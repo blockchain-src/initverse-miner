@@ -34,33 +34,6 @@ function install_package() {
     fi
 }
 
-# 安装 pm2（如果未安装）
-function install_pm2() {
-    log "检查 Node.js 和 pm2 是否已安装..."
-
-    # 检查 Node.js
-    if ! command -v node &>/dev/null; then
-        log "Node.js 未安装，正在安装 Node.js..."
-        install_package nodejs
-    else
-        log "Node.js 已安装，版本: $(node -v)"
-    fi
-
-    # 检查 npm
-    if ! command -v npm &>/dev/null; then
-        log "npm 未安装，正在安装 npm..."
-        install_package npm
-    fi
-
-    # 检查 pm2
-    if ! command -v pm2 &>/dev/null; then
-        log "pm2 未安装，正在安装 pm2..."
-        sudo npm install -g pm2 || log "pm2 安装失败，跳过。"
-    else
-        log "pm2 已安装，继续运行..."
-    fi
-}
-
 # 检查并安装依赖
 function install_dependencies() {
     log "检查并安装依赖..."
@@ -79,6 +52,31 @@ function install_dependencies() {
     fi
 
     log "依赖检查和安装已完成。"
+}
+
+# 安装 pm2（如果未安装）
+function install_pm2() {
+    echo "检查 pm2 是否已安装..."
+    if ! command -v pm2 &>/dev/null; then
+        echo "pm2 未安装，正在安装 pm2..."
+        # 安装 pm2
+        if ! command -v npm &>/dev/null; then
+            echo "npm 未安装，正在安装 npm..."
+            # 安装 npm（Node.js 包管理器）
+            if [ -f /etc/debian_version ]; then
+                sudo apt update && sudo apt install -y nodejs npm
+            elif [ -f /etc/redhat-release ]; then
+                sudo yum install -y nodejs npm
+            else
+                echo "不支持的操作系统，无法自动安装 npm。请手动安装 npm。"
+                exit 1
+            fi
+        fi
+        # 安装 pm2
+        sudo npm install -g pm2
+    else
+        echo "pm2 已安装，继续运行..."
+    fi
 }
 
 # 配置环境变量
@@ -146,19 +144,34 @@ function main_menu() {
     done
 }
 
-# 下载并运行矿机
+# 下载并启动矿机
 function download_and_run_miner() {
-    download_miner
+    # 设置固定的下载地址
+    URL="https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64"
+    TARGET_FILE="iniminer-linux-x64"  # 目标文件名
 
-    echo "请输入 EVM 钱包地址："
-    read WALLET_ADDRESS
-
-    if [[ -z "$WALLET_ADDRESS" || ! "$WALLET_ADDRESS" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
-        log "无效的钱包地址，请重新输入。"
-        read -n 1 -s -r -p "按任意键返回主菜单..."
-        main_menu
-        return
+    # 检查目标文件是否存在，如果存在则删除
+    if [ -f "$TARGET_FILE" ]; then
+        echo "目标文件 $TARGET_FILE 已存在，正在删除..."
+        rm -f "$TARGET_FILE"
     fi
+    
+    # 下载文件
+    echo "正在下载矿机..."
+    wget -O $TARGET_FILE $URL
+
+    # 检查下载是否成功
+    if [ $? -ne 0 ]; then
+        echo "下载失败，请检查网络连接和URL。"
+        exit 1
+    fi
+
+    # 给文件赋予执行权限
+    chmod +x $TARGET_FILE
+
+    # 获取用户输入
+    echo "请输入钱包地址："
+    read WALLET_ADDRESS
 
     echo "请输入工作名称："
     read WORKER_NAME
@@ -166,29 +179,42 @@ function download_and_run_miner() {
     echo "请输入CPU线程数（默认不设置线程数，直接回车跳过）："
     read CPU_THREADS
 
+    # 如果用户没有输入线程数（即按下回车），则不传递 --cpu-devices 参数
     if [ -z "$CPU_THREADS" ]; then
-        pm2 start $TARGET_FILE --name $MINER_NAME -- --pool "stratum+tcp://$WALLET_ADDRESS.$WORKER_NAME@pool-core-testnet.inichain.com:32672" &> $LOG_FILE
+    echo "未输入CPU线程数，启动矿机时不指定线程数"
+    # 使用 pm2 启动矿机
+    pm2 start $TARGET_FILE --name $MINER_NAME -- --pool "stratum+tcp://$WALLET_ADDRESS.$WORKER_NAME@pool-core-testnet.inichain.com:32672" &> $LOG_FILE
     else
-        CPU_DEVICES=""
-        for ((i=1; i<=$CPU_THREADS; i++)); do
-            CPU_DEVICES="$CPU_DEVICES --cpu-devices $i"
-        done
-        pm2 start $TARGET_FILE --name $MINER_NAME -- --pool "stratum+tcp://$WALLET_ADDRESS.$WORKER_NAME@pool-core-testnet.inichain.com:32672" $CPU_DEVICES &> $LOG_FILE
+    echo "用户输入的CPU线程数为: $CPU_THREADS"
+
+    # 生成 --cpu-devices 参数
+    CPU_DEVICES=""
+    for ((i=1; i<=$CPU_THREADS; i++)); do
+        CPU_DEVICES="$CPU_DEVICES --cpu-devices $i"
+    done
+
+    # 使用 pm2 启动矿机，传递生成的 --cpu-devices 参数
+    pm2 start $TARGET_FILE --name $MINER_NAME -- --pool "stratum+tcp://$WALLET_ADDRESS.$WORKER_NAME@pool-core-testnet.inichain.com:32672" $CPU_DEVICES &> $LOG_FILE
     fi
 
-    log "矿机已启动！"
+    echo "矿机已启动！"
+
+    # 提示用户按任意键返回主菜单
     read -n 1 -s -r -p "按任意键返回主菜单..."
     main_menu
 }
 
 # 查看日志
 function view_logs() {
-    log "正在查看矿机日志..."
+    echo "正在查看矿机日志..."
     if [ -f "$LOG_FILE" ]; then
+        # 显示日志文件内容
         pm2 logs iniminer
     else
-        log "日志文件不存在，请先启动矿机。"
+        echo "日志文件不存在，请先启动矿机。"
     fi
+
+    # 提示用户按任意键返回主菜单
     read -n 1 -s -r -p "按任意键返回主菜单..."
     main_menu
 }
@@ -196,16 +222,24 @@ function view_logs() {
 # 暂停并删除矿机
 function stop_and_delete_miner() {
     if pm2 pid $MINER_NAME &>/dev/null; then
-        log "正在停止矿机进程..."
+        # 停止矿机进程
+        echo "正在停止矿机进程..."
         pm2 stop $MINER_NAME
-        log "正在删除矿机进程..."
+
+        # 删除矿机进程
+        echo "正在删除矿机进程..."
         pm2 delete $MINER_NAME
-        log "正在删除日志文件..."
+
+        # 删除日志文件
+        echo "正在删除日志文件..."
         rm -f $LOG_FILE
-        log "矿机已删除。"
+
+        echo "矿机已删除。"
     else
-        log "没有运行的矿机进程。请先启动矿机。"
+        echo "没有运行的矿机进程。请先启动矿机。"
     fi
+
+    # 提示用户按任意键返回主菜单
     read -n 1 -s -r -p "按任意键返回主菜单..."
     main_menu
 }
@@ -213,11 +247,14 @@ function stop_and_delete_miner() {
 # 重启矿机
 function restart_miner() {
     if pm2 pid $MINER_NAME &>/dev/null; then
-        log "正在重启矿机进程..."
+        # 重启矿机进程
+        echo "正在重启矿机进程..."
         pm2 restart $MINER_NAME
     else
-        log "没有运行的矿机进程。请先启动矿机。"
+        echo "没有运行的矿机进程。请先启动矿机。"
     fi
+
+    # 提示用户按任意键返回主菜单
     read -n 1 -s -r -p "按任意键返回主菜单..."
     main_menu
 }
