@@ -1,0 +1,1 @@
+https://github.com/Project-InitVerse/miner/releases/download/v1.0.0/iniminer-linux-x64
