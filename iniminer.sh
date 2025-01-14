@@ -172,14 +172,32 @@ function download_and_run_miner() {
     chmod +x $TARGET_FILE
 
     # 获取用户输入
+    echo "请输入钱包私钥："
+    read PRIVATE_KEY
+
+    # 检查输入是否为空
+    if [ -z "$PRIVATE_KEY" ]; then
+        echo "钱包私钥不能为空！"
+        exit 1
+    fi
+
     echo "请输入钱包地址："
     read WALLET_ADDRESS
+
+    # 检查输入是否为空
+    if [ -z "$WALLET_ADDRESS" ]; then
+        echo "钱包地址不能为空！"
+        exit 1
+    fi
 
     echo "请输入工作名称："
     read WORKER_NAME
 
     echo "请输入CPU线程数（默认不设置线程数，直接回车跳过）："
     read CPU_THREADS
+
+    # 将输入保存到 .env 文件
+    echo "PRIVATE_KEY=$PRIVATE_KEY" >> .env
 
     # 如果用户没有输入线程数（即按下回车），则不传递 --cpu-devices 参数
     if [ -z "$CPU_THREADS" ]; then
